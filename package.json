@@ -1,0 +1,10 @@
+{
+  "name": "vlive-download",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.24.0",
+    "puppeteer": "^13.0.1"
+  }
+}
