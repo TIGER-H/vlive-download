@@ -5,6 +5,8 @@
   "license": "MIT",
   "dependencies": {
     "axios": "^0.24.0",
-    "puppeteer": "^13.0.1"
+    "express": "^4.17.2",
+    "puppeteer": "^13.0.1",
+    "puppeteer-core": "^13.0.1"
   }
 }

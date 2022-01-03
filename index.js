@@ -1,7 +1,9 @@
-const pupperteer = require("puppeteer");
-const axios = require("axios");
+const puppeteer = require("puppeteer-core");
+const axios = require("axios").default;
 let vUrls = [];
 let posts = [];
+
+let postIter = {};
 
 // use latest *inkey* for metadata
 const getMetaData = async (url) => {
@@ -9,7 +11,7 @@ const getMetaData = async (url) => {
     const { data } = await axios.get(url);
     const { meta, videos } = await data;
 
-    // get highest quality video
+    // get highest quality video info
     const { list } = videos;
     const bestVideo = list.reduce((prev, curr) => {
       if (curr.size > prev.size) {
@@ -18,15 +20,50 @@ const getMetaData = async (url) => {
       return prev;
     });
     // todo: assemble meta data
-    return bestVideo.source;
+    const { subject: title, cover } = meta;
+
+    return { title, cover, bestVideo };
   } catch (e) {
     console.log(e.message);
   }
 };
 
+const getAllNextPosts = async (nextParams) => {
+  let next = nextParams;
+  while (true) {
+    try {
+      const { data } = await axios.get(postIter.url, {
+        params: {
+          after: next.after,
+        },
+        headers: postIter.headers,
+        timeout: 10000,
+        timeoutErrorMessage: "timeout",
+      });
+
+      const { data: postsData, paging } = data;
+      posts.push(...postsData);
+
+      if (paging.nextParams === undefined) {
+        console.log("reached the end.");
+        break;
+      }
+
+      next = paging.nextParams;
+
+      console.log(next);
+    } catch (e) {
+      console.log(e.message);
+    }
+  }
+  console.log(posts.length);
+};
+
 (async () => {
-  const browser = await pupperteer.launch({
-    headless: true,
+  const browser = await puppeteer.launch({
+    headless: false,
+    executablePath:
+      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   });
   const page = await browser.newPage();
 
@@ -40,6 +77,18 @@ const getMetaData = async (url) => {
       const vurl = interceptedRequest.url();
       vUrls.push({ vurl });
     }
+
+    if (
+      interceptedRequest
+        .url()
+        .includes("https://www.vlive.tv/globalv-web/vam-web/post/v1.0/board")
+    ) {
+      postIter = {
+        headers: interceptedRequest.headers(),
+        url: interceptedRequest.url(),
+      };
+    }
+
     interceptedRequest.continue();
   });
 
@@ -50,10 +99,12 @@ const getMetaData = async (url) => {
         .includes("https://www.vlive.tv/globalv-web/vam-web/post/v1.0/board")
     ) {
       const { paging, data } = await response.json();
-      console.log(`collected ${data.length} video posts.`);
-      data.forEach((post) => {
-        posts.push(post);
-      });
+
+      posts.push(...data);
+
+      if (paging.nextParams) {
+        await getAllNextPosts(paging.nextParams);
+      }
     }
   });
 
@@ -66,9 +117,15 @@ const getMetaData = async (url) => {
     .filter((post) => post.contentType === "VIDEO")
     .map((post) => post.url);
 
+  console.log(postUrls.length);
+
   for (let i = 0; i < postUrls.length; i++) {
-    console.log(`getting ${i} post url`);
-    await page.goto(postUrls[i], { waitUntil: "networkidle2" });
+    console.log(`getting ${i}/${postUrls.length} post url`);
+    try {
+      await page.goto(postUrls[i], { waitUntil: "networkidle2" });
+    } catch (e) {
+      console.log(e.message);
+    }
   }
 
   console.log(vUrls);
@@ -76,29 +133,9 @@ const getMetaData = async (url) => {
   await browser.close();
 
   for (let i = 0; i < vUrls.length; i++) {
-    console.log("getting metadata for", i);
+    console.log("getting metadata for", i + 1);
     const vurl = vUrls[i].vurl;
     const src = await getMetaData(vurl);
     console.log(src);
   }
-
-  // can only use in headless set to false
-  // todo: assemble file name and download path
-  // const { fileName, fileType } = await page.evaluate(async () => {
-  //   const fileName = "download-link";
-
-  //   const el = document.querySelector("video");
-  //   const { src, type } = el.querySelector("source");
-
-  //   const downloadLink = document.createElement("a");
-  //   downloadLink.innerText = "Download Video";
-  //   downloadLink.href = src;
-  //   downloadLink.download = fileName;
-
-  //   document.querySelector("body").appendChild(downloadLink);
-
-  //   return { fileName, fileType: type.split("/")[1] };
-  // });
-
-  // await page.click(`[download="${fileName}"]`);
 })();
